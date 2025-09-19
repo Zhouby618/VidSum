@@ -152,9 +152,16 @@ class Summarizer:
 
         # 逐段生成总结
         summarized_paragraphs = []
-        for para in tqdm(paragraphs, desc="生成总结"):
+        for i, para in enumerate(tqdm(paragraphs, desc="生成总结"), 1):
             summarized = self.summarize_paragraph(para, duration)
             summarized_paragraphs.append(summarized)
+
+            # 实时显示生成的总结片段
+            if 'summary' in summarized and summarized['summary'] != '（无内容）':
+                preview = summarized['summary'][:80] + "..." if len(summarized['summary']) > 80 else summarized['summary']
+                # 提取第一行作为标题
+                first_line = preview.split('\n')[0] if '\n' in preview else preview
+                print(f"    📄 段落{i}总结: {first_line}")
 
         # 合并所有段落的总结
         full_summary_parts = []

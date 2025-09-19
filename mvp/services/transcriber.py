@@ -53,13 +53,14 @@ class WhisperTranscriber:
             logger.error(f"检查 Whisper 失败: {e}")
             return False
 
-    def transcribe_audio(self, audio_path: Path, output_format: str = "json") -> Optional[Dict]:
+    def transcribe_audio(self, audio_path: Path, output_format: str = "json", show_realtime: bool = True) -> Optional[Dict]:
         """
-        转录音频文件
+        转录音频文件（支持实时输出）
 
         Args:
             audio_path: 音频文件路径
             output_format: 输出格式 (json, txt, vtt, srt, tsv)
+            show_realtime: 是否实时显示转录内容
 
         Returns:
             转录结果字典，失败返回 None
@@ -78,7 +79,8 @@ class WhisperTranscriber:
         # 生成输出文件名（不带扩展名）
         output_base = self.output_dir / audio_path.stem
 
-        # 构建 Whisper 命令
+        # 构建 Whisper 命令（添加 --verbose True 以获取实时输出）
+        verbose_flag = "True" if show_realtime else "False"
         cmd = f"""
         source {self.whisper_env} && \
         whisper "{audio_path}" \
@@ -86,21 +88,62 @@ class WhisperTranscriber:
             --language {self.language} \
             --output_format {output_format} \
             --output_dir "{self.output_dir}" \
-            --verbose False \
+            --verbose {verbose_flag} \
             --task transcribe
         """
 
         try:
-            # 执行转录
-            logger.info("正在转录中，请耐心等待...")
-            result = subprocess.run(
-                cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                executable="/bin/bash",
-                check=True
-            )
+            if show_realtime:
+                # 实时输出模式
+                logger.info("🎙️ 开始实时转录（将逐行显示识别结果）...")
+                print("-" * 60)
+
+                process = subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    executable="/bin/bash",
+                    bufsize=1,  # 行缓冲
+                    universal_newlines=True
+                )
+
+                # 实时读取并显示输出
+                detected_text_lines = []
+                for line in process.stdout:
+                    line = line.strip()
+                    if line:
+                        # 过滤掉进度条和系统信息
+                        if not line.startswith('[') and not 'Detecting language' in line:
+                            # 这是转录的文本
+                            if any(char.isalnum() for char in line):  # 确保包含实际文字
+                                print(f"📝 {line}")
+                                detected_text_lines.append(line)
+                        elif 'Detecting language' in line:
+                            print(f"🔍 {line}")
+                        elif '%|' in line:  # 进度信息
+                            print(f"\r⏳ {line}", end='', flush=True)
+
+                process.wait()
+                print("\n" + "-" * 60)
+
+                if detected_text_lines:
+                    logger.info(f"✅ 实时转录完成，共识别 {len(detected_text_lines)} 行文本")
+
+                if process.returncode != 0:
+                    raise subprocess.CalledProcessError(process.returncode, cmd)
+            else:
+                # 静默模式（原有逻辑）
+                logger.info("正在转录中，请耐心等待...")
+                result = subprocess.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    executable="/bin/bash",
+                    check=True
+                )
 
             # 读取 JSON 结果
             json_file = Path(f"{output_base}.{output_format}")
@@ -108,7 +151,7 @@ class WhisperTranscriber:
                 with open(json_file, 'r', encoding='utf-8') as f:
                     transcript_data = json.load(f)
 
-                logger.info(f"转录成功: {json_file.name}")
+                logger.info(f"转录结果已保存: {json_file.name}")
 
                 # 解析并返回结构化数据
                 return self._parse_whisper_output(transcript_data, audio_path)
@@ -118,7 +161,8 @@ class WhisperTranscriber:
 
         except subprocess.CalledProcessError as e:
             logger.error(f"转录失败: {audio_path.name}")
-            logger.error(f"错误信息: {e.stderr}")
+            if hasattr(e, 'stderr') and e.stderr:
+                logger.error(f"错误信息: {e.stderr}")
             return None
         except json.JSONDecodeError as e:
             logger.error(f"解析 JSON 失败: {e}")

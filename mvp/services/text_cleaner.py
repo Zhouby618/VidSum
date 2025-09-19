@@ -195,6 +195,9 @@ class TextCleaner:
                             'start_time': batch[0].get('start', 0) if batch else 0,
                             'end_time': batch[-1].get('end', 0) if batch else 0
                         }
+                        # 实时显示清洗后的文本片段（前 50 个字符）
+                        preview = cleaned_text[:50] + "..." if len(cleaned_text) > 50 else cleaned_text
+                        print(f"    ✨ 段落{idx//self.batch_size + 1}: {preview}")
                     except Exception as e:
                         logger.error(f"批次 {idx} 清洗失败: {e}")
                         # 使用原始文本作为后备
