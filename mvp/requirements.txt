@@ -1,0 +1,9 @@
+# Core dependencies
+ffmpeg-python==0.2.0
+ollama==0.3.3
+pytest==7.4.3
+python-dotenv==1.0.0
+
+# Utilities
+tqdm==4.66.1
+colorama==0.4.6
